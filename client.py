@@ -89,18 +89,22 @@ class MCPClient:
         response_message = openai_response.choices[0].message
         
         # Handle the response content and tool calls
-        while True:
+        max_iterations = 3
+        for _ in range(max_iterations):
             # Add text content if present
             if response_message.content:
                 messages.append({
-                    "role": "assistant",
+                    "role": "system",
                     "content": response_message.content
                 })
-                final_text.append(response_message.content)
+                # print(f"\nSystem message: {response_message.content}")
             
             # Check if there are tool calls to execute
             if not response_message.tool_calls:
                 # No more tool calls, we're done
+                # print("No more tool calls, we're done")
+                final_text.append(response_message.content)
+
                 break
             
             observations = {}
@@ -110,13 +114,14 @@ class MCPClient:
                 tool_name = tool_call.function.name
                 tool_arguments = json.loads(tool_call.function.arguments)
                 
-                final_text.append(f"[Calling tool {tool_name} with args {tool_arguments}]")
+                # final_text.append(f"[Calling tool {tool_name} with args {tool_arguments}]")
                 
                 print(f"Calling tool {tool_name} with args {tool_arguments}")
                 # Execute tool call via MCP
                 result = await self.session.call_tool(tool_name, tool_arguments)
                 observations[tool_call.id] = result.content
                 # Add tool result to conversation
+                # print(f"\nObservation: {observations}")
                 messages.append({
                     "role": "user",
                     "content": f'f"Observation: {observations}"'
@@ -129,7 +134,9 @@ class MCPClient:
                 max_tokens=1000,
                 tools=available_tools,
             )
+
             response_message = openai_response.choices[0].message
+            # print(f"\nResponse message: {response_message}")
 
         return "\n".join(final_text)
 
