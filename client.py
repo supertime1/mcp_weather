@@ -91,40 +91,48 @@ class MCPClient:
         # Handle the response content and tool calls
         max_iterations = 3
         for _ in range(max_iterations):
-            # Add text content if present
-            if response_message.content:
-                messages.append({
-                    "role": "system",
-                    "content": response_message.content
-                })
-                # print(f"\nSystem message: {response_message.content}")
-            
             # Check if there are tool calls to execute
             if not response_message.tool_calls:
-                # No more tool calls, we're done
-                # print("No more tool calls, we're done")
-                final_text.append(response_message.content)
-
+                # No more tool calls, add final content and we're done
+                if response_message.content:
+                    final_text.append(response_message.content)
+                    # print(f"\nFinal response: {response_message.content}")
                 break
             
-            observations = {}
+            # Add the assistant message to conversation
+            messages.append({
+                "role": "assistant",
+                "content": response_message.content,
+                "tool_calls": [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    }
+                    for tool_call in response_message.tool_calls
+                ]
+            })
 
             # Execute each tool call
             for tool_call in response_message.tool_calls:
                 tool_name = tool_call.function.name
                 tool_arguments = json.loads(tool_call.function.arguments)
                 
-                # final_text.append(f"[Calling tool {tool_name} with args {tool_arguments}]")
+                final_text.append(f"[Calling tool {tool_name} with args {tool_arguments}]")
                 
                 print(f"Calling tool {tool_name} with args {tool_arguments}")
                 # Execute tool call via MCP
                 result = await self.session.call_tool(tool_name, tool_arguments)
-                observations[tool_call.id] = result.content
+                
                 # Add tool result to conversation
-                # print(f"\nObservation: {observations}")
+                print(f"\nTool result: {result.content}")
                 messages.append({
-                    "role": "user",
-                    "content": f'f"Observation: {observations}"'
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": str(result.content)
                 })
             
             # Get next response from OpenAI with tool results
@@ -136,7 +144,7 @@ class MCPClient:
             )
 
             response_message = openai_response.choices[0].message
-            # print(f"\nResponse message: {response_message}")
+            print(f"\nNext response message: {response_message}")
 
         return "\n".join(final_text)
 
@@ -159,7 +167,9 @@ class MCPClient:
                     break
 
                 response = await self.process_query(query)
-                print("\n" + response)
+                print(f"="*100)
+                print(f"\nResponse: {response}")
+                print(f"="*100)
 
             except Exception as e:
                 print(f"\nError: {str(e)}")
